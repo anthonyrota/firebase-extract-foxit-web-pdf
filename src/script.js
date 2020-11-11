@@ -441,7 +441,7 @@ function bindForm() {
                 imageOnly: imageOnlyInput.checked,
                 onHasPageCount: (pageCount_) => {
                     progressBar.innerText = '0 / ' + pageCount_ + ' Pages';
-                    progressBar.setAttribute('aria-valuemax', pageCount);
+                    progressBar.setAttribute('aria-valuemax', pageCount_);
                     pageCount = pageCount_;
                 },
                 onPageCreated: (pageNumber) => {
