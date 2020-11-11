@@ -1,0 +1,6 @@
+{
+    "presets": [
+        ["@babel/env", { "modules": false, "bugfixes": true, "loose": true }]
+    ],
+    "plugins": ["@babel/plugin-proposal-class-properties"]
+}

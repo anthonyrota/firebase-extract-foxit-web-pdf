@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#ffffff" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="format-detection" content="telephone=no" />
+        <title>Extract Foxit WebPDF</title>
+        <link rel="manifest" href="/manifest.webmanifest" />
+    </head>
+    <body>
+        <form class="col-lg-8 mx-auto my-3" action="">
+            <h2 class="h5">PDF Generation Parameters</h2>
+            <div class="form-group">
+                <label for="foxitAssetUrl">Foxit Asset URL</label>
+                <input
+                    class="form-control"
+                    type="url"
+                    name="foxitAssetUrl"
+                    id="foxitAssetUrl"
+                    required
+                />
+            </div>
+            <div class="form-group">
+                <label for="outFileName">Generated PDF File Name</label>
+                <input
+                    class="form-control"
+                    type="text"
+                    name="outFileName"
+                    id="outFileName"
+                    aria-describedby="outFileNameHelp"
+                    pattern="[a-zA-Z0-9_-]+"
+                    required
+                />
+                <small class="form-text text-muted" id="outFileNameHelp">
+                    Must only contain letters, numbers, underscores and dashes.
+                </small>
+            </div>
+            <div class="form-group">
+                <label for="fontFamily">Text Layer Font Family</label>
+                <select class="form-control" name="fontFamily" id="fontFamily">
+                    <option>Courier</option>
+                    <option>Courier-Bold</option>
+                    <option>Courier-Oblique</option>
+                    <option>Courier-BoldOblique</option>
+                    <option>Helvetica</option>
+                    <option>Helvetica-Bold</option>
+                    <option>Helvetica-Oblique</option>
+                    <option>Helvetica-BoldOblique</option>
+                    <option selected>Times-Roman</option>
+                    <option>Times-Bold</option>
+                    <option>Times-Italic</option>
+                    <option>Times-BoldItalic</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="singleCharacterWordPadding">
+                    Single Character Word Padding
+                </label>
+                <input
+                    class="form-control"
+                    type="number"
+                    name="singleCharacterWordPadding"
+                    id="singleCharacterWordPadding"
+                    aria-describedby="singleCharacterWordPaddingHelp"
+                    value="0"
+                    min="0"
+                    max="10"
+                    step="0.01"
+                />
+                <small
+                    class="form-text text-muted"
+                    id="singleCharacterWordPaddingHelp"
+                >
+                    This is the extra spacing put after single character words
+                    (eg. 'a' or 'I') in the text layer. This is useful when the
+                    gap after single character words is not picked up as a space
+                    by your pdf viewer.
+                </small>
+            </div>
+            <div class="form-group">
+                <h2 class="h5 mb-1">Output Format Options</h2>
+                <small class="form-text text-muted mb-2" id="imageOnlyHelp">
+                    Must select one or more.
+                </small>
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="imageAndText"
+                        id="imageAndText"
+                        value="true"
+                    />
+                    <label class="form-check-label" for="imageAndText">
+                        Generate Full PDF
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="imageAndTextDebugText"
+                        id="imageAndTextDebugText"
+                        value="true"
+                    />
+                    <label class="form-check-label" for="imageAndTextDebugText">
+                        Generate Full PDF With Text Debugging
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="textOnly"
+                        id="textOnly"
+                        value="true"
+                    />
+                    <label class="form-check-label" for="textOnly">
+                        Generate Text Only PDF
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="textOnlyDebugText"
+                        id="textOnlyDebugText"
+                        value="true"
+                    />
+                    <label class="form-check-label" for="textOnlyDebugText">
+                        Generate Text Only PDF With Text Debugging
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="imageOnly"
+                        id="imageOnly"
+                        value="true"
+                    />
+                    <label class="form-check-label" for="imageOnly">
+                        Generate Image Only PDF
+                    </label>
+                </div>
+            </div>
+            <div
+                class="progress mb-4 d-none"
+                style="height: 30px"
+                id="progress"
+            >
+                <div
+                    class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+                    role="progressbar"
+                    style="width: 0"
+                    aria-valuenow="0"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    id="progressbar"
+                ></div>
+            </div>
+            <input
+                class="btn btn-primary"
+                type="submit"
+                value="Download PDF(s)"
+            />
+        </form>
+        <script src="/script.js"></script>
+    </body>
+</html>
