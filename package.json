@@ -2,9 +2,11 @@
     "scripts": {
         "start": "npm build && concurrently -n firebase,build 'npm run start:firebase' 'npm run start:build'",
         "start:firebase": "firebase emulators:start",
-        "start:build": "nodemon -e js,json,html,webmanifest,ico,png --exec 'npm run build' --watch package.json --watch src --watch script",
+        "start:build": "nodemon -e js,css,html,json,webmanifest,ico,png,svg --exec 'npm run build:dev' --watch package.json --watch src --watch script",
         "build": "rimraf public && npm run build:parcel && npm run build:postparcel",
+        "build:dev": "rimraf public && npm run build:parcel-dev && npm run build:postparcel",
         "build:parcel": "parcel build src/*.html --dist-dir public --no-source-maps",
+        "build:parcel-dev": "NODE_ENV=development parcel build src/*.html --dist-dir public --no-source-maps --no-minify",
         "build:postparcel": "node ./script/postparcel.js"
     },
     "dependencies": {
@@ -12,7 +14,8 @@
         "bootstrap": "4.5.3",
         "buffer-image-size": "0.6.4",
         "file-saver": "2.0.2",
-        "jszip": "3.5.0",
+        "idlize": "0.1.1",
+        "jszip": "3.1.5",
         "p-limit": "3.0.2",
         "pdfkit": "^0.11.0",
         "promise-polyfill": "8.2.0",

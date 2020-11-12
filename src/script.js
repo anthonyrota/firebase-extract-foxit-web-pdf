@@ -3,12 +3,14 @@
 const EventEmitter = require('events');
 new EventEmitter();
 import 'bootstrap/dist/css/bootstrap.min.css';
+import './style.css';
 import 'promise-polyfill';
 import 'whatwg-fetch';
 import 'regenerator-runtime/runtime';
 import blobStream from 'blob-stream';
 import bufferImageSize from 'buffer-image-size';
 import fileSaver from 'file-saver';
+import { IdleQueue } from 'idlize/IdleQueue.mjs';
 import jszip from 'jszip';
 import pLimit from 'p-limit';
 import pdfkit from 'pdfkit';
@@ -50,6 +52,7 @@ async function onFormSubmit(values) {
         imageAndTextDebugText,
         onHasPageCount,
         onPageCreated,
+        onZipUpdate,
     } = values;
 
     const requests = [
@@ -105,12 +108,29 @@ async function onFormSubmit(values) {
         });
     });
 
-    await makePdfs({
+    let error;
+    makePdfs({
         foxitAssetUrl,
         pdfs: pdfRequests,
         onHasPageCount,
         onPageCreated,
+    }).catch((v) => {
+        console.log('error making pdf', error);
+        error = { v };
     });
+
+    if (results.length === 1) {
+        const { stream, name } = results[0];
+        return new Promise((resolve) => {
+            stream.on('finish', () => {
+                if (error) {
+                    return;
+                }
+                fileSaver.saveAs(stream.toBlob('application/pdf'), name);
+                resolve();
+            });
+        });
+    }
 
     const zip = new jszip();
     const folder = zip.folder(outFileName);
@@ -120,6 +140,9 @@ async function onFormSubmit(values) {
             ({ stream, name }) =>
                 new Promise((resolve) => {
                     stream.on('finish', () => {
+                        if (error) {
+                            return;
+                        }
                         folder.file(name, stream.toBlob('application/pdf'));
                         resolve();
                     });
@@ -127,7 +150,11 @@ async function onFormSubmit(values) {
         ),
     );
 
-    const blob = await zip.generateAsync({ type: 'blob' });
+    if (error) {
+        return;
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' }, onZipUpdate);
     fileSaver.saveAs(blob, outFileName + '.zip');
 }
 
@@ -252,150 +279,184 @@ async function makePdfs({
         const [textObjectList, imageBuffer] = await Promise.all([
             noDownloadText
                 ? undefined
-                : requestLimit(() => {
+                : (async () => {
                       console.log('downloading text for page', i);
-                      return getTextForPage({
+                      const v = await getTextForPage({
                           foxitAssetUrl,
                           pageNumber: i,
-                      }).then((v) => {
-                          console.log('downloaded text for page', i);
-                          return v;
                       });
-                  }),
-            requestLimit(() => {
+                      console.log('downloaded text for page', i);
+                      return v;
+                  })(),
+            (async () => {
                 console.log('downloading image for page', i);
-                return getImageForPage({ foxitAssetUrl, pageNumber: i }).then(
-                    (v) => {
-                        console.log('downloaded image for page', i);
-                        return v;
-                    },
-                );
-            }),
+                const v = await getImageForPage({
+                    foxitAssetUrl,
+                    pageNumber: i,
+                });
+                console.log('downloaded image for page', i);
+                return v;
+            })(),
         ]);
         const imageDimensions = bufferImageSize(imageBuffer);
         await cP;
         console.log('making page', i);
-        pdfs.forEach(
-            ({
-                doc,
-                debugText,
-                fontFamily,
-                singleCharacterWordPadding,
-                imageOnly,
-                textOnly,
-            }) => {
-                doc.addPage({
-                    size: [imageDimensions.width, imageDimensions.height],
-                });
-                if (!textOnly) {
-                    doc.image(imageBuffer, 0, 0);
-                }
-                if (imageOnly) {
-                    return;
-                }
-                const xScale =
-                    imageDimensions.width / manifest.pagesInfo[i].width;
-                const yScale =
-                    imageDimensions.height / manifest.pagesInfo[i].height;
-                if (!textOnly) {
-                    if (debugText) {
-                        doc.fillColor('#ddd');
-                        doc.fillOpacity(0.7);
-                    } else {
-                        doc.fillOpacity(0);
+        await Promise.all(
+            pdfs.map(
+                ({
+                    doc,
+                    debugText,
+                    fontFamily,
+                    singleCharacterWordPadding,
+                    imageOnly,
+                    textOnly,
+                }) => {
+                    doc.addPage({
+                        size: [imageDimensions.width, imageDimensions.height],
+                    });
+                    if (!textOnly) {
+                        doc.image(imageBuffer, 0, 0);
                     }
-                }
-                doc.font(fontFamily !== undefined ? fontFamily : 'Times-Roman');
-                textObjectList.forEach((textObj) => {
-                    let wordStartOffset = 0;
-                    for (let i = 0; i < textObj.characters.length; i++) {
-                        let j = i;
-                        for (; j < textObj.characters.length - 1; j++) {
-                            const thisChar = textObj.characters[j + 1];
-                            if (/\s/.test(thisChar.charText)) {
-                                break;
-                            }
-                        }
-                        let word = '';
-                        let firstChar;
-                        let lastChar;
-                        for (; i <= j; i++) {
-                            const char = textObj.characters[i];
-                            if (/\s/.test(char.charText)) {
-                                continue;
-                            }
-                            if (!firstChar) {
-                                firstChar = char;
-                            }
-                            lastChar = char;
-                            word += char.charText;
-                        }
-                        if (!firstChar) {
-                            continue;
-                        }
-                        const wordWidth =
-                            (lastChar.charRect.right -
-                                firstChar.charRect.left) *
-                            xScale;
-                        const wordHeight =
-                            (firstChar.charRect.top -
-                                firstChar.charRect.bottom) *
-                            yScale;
-                        doc.fontSize(referenceFontSize);
-                        const referenceHeight = Math.max(
-                            doc.heightOfString(firstChar.charText, textOpts),
-                            1,
-                        );
-                        const fontSize =
-                            referenceFontSize * (wordHeight / referenceHeight);
-                        doc.fontSize(fontSize);
-                        const measuredWordWidth = doc.widthOfString(
-                            word,
-                            textOpts,
-                        );
-                        const characterSpacing =
-                            word.length === 1
-                                ? 0
-                                : (wordWidth -
-                                      wordStartOffset -
-                                      measuredWordWidth) /
-                                  (word.length - 1);
+                    if (imageOnly) {
+                        return;
+                    }
+                    const xScale =
+                        imageDimensions.width / manifest.pagesInfo[i].width;
+                    const yScale =
+                        imageDimensions.height / manifest.pagesInfo[i].height;
+                    if (!textOnly) {
                         if (debugText) {
-                            doc.rect(
-                                firstChar.charRect.left * xScale,
-                                imageDimensions.height -
-                                    firstChar.charRect.top * xScale,
-                                wordWidth,
-                                wordHeight,
-                            ).stroke('#ddd');
-                        }
-                        doc.text(
-                            word,
-                            wordStartOffset + firstChar.charRect.left * xScale,
-                            imageDimensions.height -
-                                firstChar.charRect.top * yScale +
-                                wordHeight / 2,
-                            { ...textOpts, characterSpacing },
-                        );
-                        if (singleCharacterWordPadding !== undefined) {
-                            if (word.length === 1) {
-                                wordStartOffset +=
-                                    measuredWordWidth *
-                                    singleCharacterWordPadding;
-                            } else {
-                                wordStartOffset = 0;
-                            }
+                            doc.fillColor('#ddd');
+                            doc.fillOpacity(0.7);
+                        } else {
+                            doc.fillOpacity(0);
                         }
                     }
-                });
-            },
+                    doc.font(
+                        fontFamily !== undefined ? fontFamily : 'Times-Roman',
+                    );
+                    if (textObjectList.length === 0) {
+                        return;
+                    }
+                    const queue = new IdleQueue();
+                    return new Promise((resolve) => {
+                        textObjectList.forEach((textObj, textObjIndex) => {
+                            queue.pushTask(() => {
+                                let wordStartOffset = 0;
+                                for (
+                                    let i = 0;
+                                    i < textObj.characters.length;
+                                    i++
+                                ) {
+                                    let j = i;
+                                    for (
+                                        ;
+                                        j < textObj.characters.length - 1;
+                                        j++
+                                    ) {
+                                        const thisChar =
+                                            textObj.characters[j + 1];
+                                        if (/\s/.test(thisChar.charText)) {
+                                            break;
+                                        }
+                                    }
+                                    let word = '';
+                                    let firstChar;
+                                    let lastChar;
+                                    for (; i <= j; i++) {
+                                        const char = textObj.characters[i];
+                                        if (/\s/.test(char.charText)) {
+                                            continue;
+                                        }
+                                        if (!firstChar) {
+                                            firstChar = char;
+                                        }
+                                        lastChar = char;
+                                        word += char.charText;
+                                    }
+                                    if (!firstChar) {
+                                        continue;
+                                    }
+                                    const wordWidth =
+                                        (lastChar.charRect.right -
+                                            firstChar.charRect.left) *
+                                        xScale;
+                                    const wordHeight =
+                                        (firstChar.charRect.top -
+                                            firstChar.charRect.bottom) *
+                                        yScale;
+                                    doc.fontSize(referenceFontSize);
+                                    const referenceHeight = Math.max(
+                                        doc.heightOfString(
+                                            firstChar.charText,
+                                            textOpts,
+                                        ),
+                                        1,
+                                    );
+                                    const fontSize =
+                                        referenceFontSize *
+                                        (wordHeight / referenceHeight);
+                                    doc.fontSize(fontSize);
+                                    const measuredWordWidth = doc.widthOfString(
+                                        word,
+                                        textOpts,
+                                    );
+                                    const characterSpacing =
+                                        word.length === 1
+                                            ? 0
+                                            : (wordWidth -
+                                                  wordStartOffset -
+                                                  measuredWordWidth) /
+                                              (word.length - 1);
+                                    if (debugText) {
+                                        doc.rect(
+                                            firstChar.charRect.left * xScale,
+                                            imageDimensions.height -
+                                                firstChar.charRect.top * xScale,
+                                            wordWidth,
+                                            wordHeight,
+                                        ).stroke('#ddd');
+                                    }
+                                    doc.text(
+                                        word,
+                                        wordStartOffset +
+                                            firstChar.charRect.left * xScale,
+                                        imageDimensions.height -
+                                            firstChar.charRect.top * yScale +
+                                            wordHeight / 2,
+                                        { ...textOpts, characterSpacing },
+                                    );
+                                    if (
+                                        singleCharacterWordPadding !== undefined
+                                    ) {
+                                        if (word.length === 1) {
+                                            wordStartOffset +=
+                                                measuredWordWidth *
+                                                singleCharacterWordPadding;
+                                        } else {
+                                            wordStartOffset = 0;
+                                        }
+                                    }
+                                }
+                                const isLast =
+                                    textObjIndex === textObjectList.length - 1;
+                                if (isLast) {
+                                    resolve();
+                                }
+                            });
+                        });
+                    });
+                },
+            ),
         );
         onPageCreated(i + 1);
         console.log('created page', i);
         resolve();
     };
     await Promise.all(
-        Array.from({ length: manifest.pageCount }, (_, i) => makePage(i)),
+        Array.from({ length: manifest.pageCount }, (_, i) =>
+            requestLimit(() => makePage(i)),
+        ),
     );
     pdfs.forEach(({ doc }) => {
         doc.end();
@@ -420,12 +481,22 @@ function bindForm() {
     const textOnlyInput = document.getElementById('textOnly');
     const textOnlyDebugTextInput = document.getElementById('textOnlyDebugText');
     const imageOnlyInput = document.getElementById('imageOnly');
-    const progress = document.getElementById('progress');
-    const progressBar = document.getElementById('progressbar');
+    const progress1 = document.getElementById('progress1');
+    const progressBar1 = document.getElementById('progressBar1');
+    const progress2 = document.getElementById('progress2');
+    const progressBar2 = document.getElementById('progressBar2');
     fixCheckboxGroup();
+    let isProcessingForm = false;
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        progress.classList.remove('d-none');
+        if (isProcessingForm) {
+            return;
+        }
+        isProcessingForm = true;
+        for (let i = 0; i < form.elements.length; i++) {
+            form.elements[i].disabled = true;
+        }
+        progress1.classList.remove('d-none');
         let pageCount = 0;
         try {
             await onFormSubmit({
@@ -439,32 +510,43 @@ function bindForm() {
                 textOnly: textOnlyInput.checked,
                 textOnlyDebugText: textOnlyDebugTextInput.checked,
                 imageOnly: imageOnlyInput.checked,
-                onHasPageCount: (pageCount_) => {
-                    progressBar.innerText = '0 / ' + pageCount_ + ' Pages';
-                    progressBar.setAttribute('aria-valuemax', pageCount_);
+                onHasPageCount(pageCount_) {
+                    progressBar1.innerText = '0 / ' + pageCount_ + ' Pages';
+                    progressBar1.setAttribute('aria-valuemax', pageCount_);
                     pageCount = pageCount_;
                 },
-                onPageCreated: (pageNumber) => {
-                    progressBar.setAttribute('aria-valuenow', pageNumber);
-                    progressBar.style.width =
+                onPageCreated(pageNumber) {
+                    progressBar1.setAttribute('aria-valuenow', pageNumber);
+                    progressBar1.style.width =
                         (pageNumber / pageCount) * 100 + '%';
-                    if (pageNumber === pageCount) {
-                        progressBar.innerText =
-                            'Done. Saving PDF... (this may take a while)';
-                    } else {
-                        progressBar.innerText =
-                            pageNumber + ' / ' + pageCount + ' Pages';
-                    }
+                    progressBar1.innerText =
+                        pageNumber + ' / ' + pageCount + ' Pages';
+                },
+                onZipUpdate({ percent, currentFile }) {
+                    console.log('zip update', percent + '%', currentFile);
+                    progress2.classList.remove('d-none');
+                    progressBar2.setAttribute('aria-valuenow', percent);
+                    progressBar2.style.width = percent + '%';
+                    progressBar2.innerText =
+                        'Zipping Files (' + percent.toFixed(2) + '%)';
                 },
             });
         } catch (error) {
             console.log('error while creating pdf', error);
         }
-        progress.classList.add('d-none');
-        progressBar.innerText = '';
-        progressBar.setAttribute('aria-valuenow', 0);
-        progressBar.setAttribute('aria-valuemax', 100);
-        progressBar.style.width = 0;
+        isProcessingForm = false;
+        for (let i = 0; i < form.elements.length; i++) {
+            form.elements[i].disabled = false;
+        }
+        progress1.classList.add('d-none');
+        progressBar1.innerText = '';
+        progressBar1.setAttribute('aria-valuenow', 0);
+        progressBar1.setAttribute('aria-valuemax', 100);
+        progressBar1.style.width = 0;
+        progress2.classList.add('d-none');
+        progressBar2.innerText = '';
+        progressBar2.setAttribute('aria-valuenow', 0);
+        progressBar2.style.width = 0;
     });
 }
 

@@ -72,34 +72,50 @@ async function main() {
     const scriptJsPath = (
         await glob('script.*.js', { nodir: true, cwd: publicDir })
     )[0];
+    const iconDirFiles = await glob('icons/*', {
+        nodir: true,
+        cwd: publicDir,
+    });
+    const iconReplacements = (
+        await Promise.all(
+            iconDirFiles.map(async (iconPath) => {
+                const ext = path.extname(iconPath);
+                const name = path.basename(iconPath, ext);
+                const hashed = await glob(`${name}.*${ext}`, {
+                    nodir: true,
+                    cwd: publicDir,
+                });
+                if (hashed.length !== 1) {
+                    return;
+                }
+                const [hashedName] = hashed;
+                fs.unlink(path.join(publicDir, hashedName));
+                return { hashedName, iconPath };
+            }),
+        )
+    ).filter(Boolean);
 
     for (const htmlPath of await glob('*.html', {
         nodir: true,
         cwd: publicDir,
     })) {
         const absoluteHtmlPath = path.join(publicDir, htmlPath);
-        const htmlText = await fs.readFile(absoluteHtmlPath, 'utf8');
-        await fs.writeFile(
-            absoluteHtmlPath,
-            htmlText
-                .replace('/' + manifestPath, '/' + newManifestName)
-                .replace('/' + scriptCssPath, '/' + newScriptCssName)
-                // Parcel bug where the css path is injected instead of the js.
-                .replace('/' + scriptCssPath, '/' + scriptJsPath),
-            'utf-8',
-        );
+        let htmlText = (await fs.readFile(absoluteHtmlPath, 'utf-8'))
+            .replace('/' + manifestPath, '/' + newManifestName)
+            .replace('/' + scriptCssPath, '/' + newScriptCssName)
+            // Parcel bug where the css path is injected instead of the js.
+            .replace('/' + scriptCssPath, '/' + scriptJsPath);
+        for (const { hashedName, iconPath } of iconReplacements) {
+            htmlText = htmlText.replace('/' + hashedName, '/' + iconPath);
+        }
+        await fs.writeFile(absoluteHtmlPath, htmlText, 'utf-8');
     }
 
     const immutablePaths = await glob('*.{css,js}', {
         nodir: true,
         cwd: publicDir,
     });
-    const iconPaths = ['favicon.ico'].concat(
-        await glob('icons/*', {
-            nodir: true,
-            cwd: publicDir,
-        }),
-    );
+    const iconPaths = ['favicon.ico'].concat(iconDirFiles);
 
     function makeFileNameAndContentList(fileList) {
         return Promise.all(
