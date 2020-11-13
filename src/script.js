@@ -15,30 +15,6 @@ import jszip from 'jszip';
 import pLimit from 'p-limit';
 import pdfkit from 'pdfkit';
 
-function fixCheckboxGroup() {
-    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-    const checkboxesCount = checkboxes.length;
-
-    function updateCheckboxRequired() {
-        let hasChecked = false;
-        for (let i = 0; i < checkboxesCount; i++) {
-            if (checkboxes[i].checked) {
-                hasChecked = true;
-                break;
-            }
-        }
-        for (let i = 0; i < checkboxesCount; i++) {
-            checkboxes[i].required = !hasChecked;
-        }
-    }
-
-    for (let i = 0; i < checkboxesCount; i++) {
-        checkboxes[i].addEventListener('change', updateCheckboxRequired);
-    }
-
-    updateCheckboxRequired();
-}
-
 async function onFormSubmit(values) {
     const {
         foxitAssetUrl,
@@ -67,7 +43,10 @@ async function onFormSubmit(values) {
     const results = [];
 
     requests.forEach((requestType) => {
-        const doc = new pdfkit({ autoFirstPage: false, compress: false });
+        const doc = new pdfkit({
+            autoFirstPage: false,
+            compress: false,
+        });
         const requestParameters = {
             doc,
             fontFamily,
@@ -548,6 +527,30 @@ function bindForm() {
         progressBar2.setAttribute('aria-valuenow', 0);
         progressBar2.style.width = 0;
     });
+}
+
+function fixCheckboxGroup() {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    const checkboxesCount = checkboxes.length;
+
+    function updateCheckboxRequired() {
+        let hasChecked = false;
+        for (let i = 0; i < checkboxesCount; i++) {
+            if (checkboxes[i].checked) {
+                hasChecked = true;
+                break;
+            }
+        }
+        for (let i = 0; i < checkboxesCount; i++) {
+            checkboxes[i].required = !hasChecked;
+        }
+    }
+
+    for (let i = 0; i < checkboxesCount; i++) {
+        checkboxes[i].addEventListener('change', updateCheckboxRequired);
+    }
+
+    updateCheckboxRequired();
 }
 
 function registerServiceWorker() {
