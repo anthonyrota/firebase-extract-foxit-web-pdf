@@ -15,7 +15,7 @@
         "buffer-image-size": "0.6.4",
         "file-saver": "2.0.2",
         "idlize": "0.1.1",
-        "jszip": "3.1.5",
+        "jszip": "3.8.0",
         "p-limit": "3.0.2",
         "pdfkit": "^0.11.0",
         "promise-polyfill": "8.2.0",
